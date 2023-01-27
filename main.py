@@ -2,9 +2,12 @@ from functools import partial
 import numpy as np
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
+import os
+from PIL import Image
 
 
 class Rho:
+
     def __init__(self, scale=0.1):
         self.rho = None
         self.scale = scale
@@ -17,21 +20,19 @@ class Rho:
         self.rho = np.random.rand() * self.scale
 
 
-def fft_norm(x):
+def fft(x):
     """normalized 2d fft"""
-    n = x.shape[0]
-    return np.fft.fft2(x) / np.sqrt(n)
+    return np.fft.fft2(x)
 
 
-def ifft_norm(x):
+def ifft(x):
     """normalized 2d invers fft"""
-    n = x.shape[0]
-    return np.fft.ifft2(x) * np.sqrt(n)
+    return np.fft.ifft2(x)
 
 
 def proj_m(z, y):
-    fft_z = fft_norm(z)
-    return ifft_norm(np.sqrt(y) * (fft_z / np.abs(fft_z)))
+    fft_z = fft(z)
+    return ifft(np.sqrt(y) * (fft_z / np.abs(fft_z)))
 
 
 def proj_s(z, n):
@@ -64,15 +65,15 @@ def a_star(gamma, n):
     Returns:
 
     """
-    m = int(np.sqrt(gamma.shape[0] + n ** 2))
+    m = int(np.sqrt(gamma.shape[0] + n**2))
     res = np.zeros((m, m), dtype=gamma.dtype)
-    idxs = a(np.arange(m ** 2).reshape((m, m)), n)
+    idxs = a(np.arange(m**2).reshape((m, m)), n)
     res[np.unravel_index(idxs, (m, m))] = gamma
 
     return res
 
 
-def g(z, y, n, rho: Rho):
+def objective_and_grad(z, y, n, rho: Rho):
     """
 
     Args:
@@ -84,37 +85,31 @@ def g(z, y, n, rho: Rho):
     Returns:
 
     """
+    r = rho.get()
+    m = y.shape[0]
+    z = real_to_complex(z).reshape((m, m))
+
+    gamma = np.ones(m**2 - n**2)
+    proj_m_z = proj_m(z, y)
+    z_minus_proj_m_z = z - proj_m_z
+    a_z = a(z, n)
+
+    objective = 0.5 * np.linalg.norm(z_minus_proj_m_z, ord="fro")**2 + \
+        (r / 2) * np.linalg.norm(a_z + (gamma / r), ord=2)**2
+
+    grad = 0.5 * (z_minus_proj_m_z + r * a_star(a_z, n) + a_star(gamma, n)).flatten()
+
+    return (objective, complex_to_real(grad))
+
+
+def iteration_callback(z, n, rho, tol=1e-6):
     rho.randomize()
-    r = rho.get()
-    m = y.shape[0]
-    z = real_to_complex(z)
-    z = z.reshape((m, m))
 
-    gamma = 1
-    target = (1 / 2) * np.linalg.norm(z - proj_m(z, y), ord="fro") ** 2 + (r / 2) * np.linalg.norm(
-        a(z, n) + (gamma / r),
-        ord=2) ** 2
-
-    print(f"target: {target:.3f}, rho: {r:.3f}")
-    return target
-
-
-def grad_g(z, y, n, rho: Rho):
-    m = y.shape[0]
-    z = real_to_complex(z)
-    z = z.reshape((m, m))
-    r = rho.get()
-
-    gamma = np.ones(m ** 2 - n ** 2)
-    grad_z = 1 / 2 * (z - proj_m(z, y) + r * a_star(a(z, n), n) + a_star(gamma, n)).flatten()
-    return complex_to_real(grad_z)
-
-
-def stop_callback(z, n, tol=10e-6):
     z = real_to_complex(z)
     m = int(np.sqrt(z.shape[0]))
     z = z.reshape((m, m))
-    return np.linalg.norm(z - proj_s(z, n), ord='fro') < tol
+
+    return np.linalg.norm(z - proj_m(z, n), ord='fro') < tol
 
 
 def real_to_complex(z):  # real vector of length 2n -> complex of length n
@@ -126,33 +121,40 @@ def complex_to_real(z):  # complex vector of length n -> real of length 2n
 
 
 def main():
-    x = np.random.rand(25, 25)  # get image
+    im = Image.open(os.path.join("images", "100px", "dancer.jpg")).convert('L')
+    x = np.asarray(im) / 255.0
+
     n = x.shape[0]
     m = 2 * n - 1
-    stop_callback_partial = partial(stop_callback, n=n)
+
+    y = np.abs(fft(pad(x, m)))**2
+    z_0 = ifft(np.sqrt(y) * np.exp(1j * np.random.rand(m, m) * 2 * np.pi))
 
     rho = Rho()
 
-    padded_x = pad(x, m)
-    y = np.abs(fft_norm(padded_x)) ** 2
-    z_0 = ifft_norm(np.sqrt(y) * np.exp(1j * np.random.rand(m, m) * 2 * np.pi))
-
-    opts = {'maxiter': int(1e4),
-            'disp': True,
-            'gtol': -np.inf,
-            'ftol': -np.inf,
-            }
-    res = minimize(fun=g,
+    opts = {
+        'maxiter': int(1e4),
+        'iprint': 1,
+        'disp': True,
+        'gtol': 0,
+        'ftol': 0,
+    }
+    res = minimize(fun=objective_and_grad,
                    x0=complex_to_real(z_0.flatten()),
-                   jac=grad_g,
+                   jac=True,
                    args=(y, n, rho),
                    method='L-BFGS-B',
-                   callback=stop_callback_partial,
-                   options=opts, tol=-np.inf)
+                   callback=partial(iteration_callback, n=n, rho=rho),
+                   bounds=None,
+                   options=opts)
 
     x_hat = real_to_complex(res.x).reshape((m, m))[:n, :n]
-    print(res)
-    # assert np.allclose(x, x_hat, atol=1e-3)
+    print(np.allclose(x, x_hat, atol=0.05))
+
+    fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+    axs[0].imshow(x, cmap="gray")
+    axs[1].imshow(np.clip(np.real(x_hat), 0, 1), cmap="gray")
+    plt.show()
 
     # n = 4
     # x = np.arange(n ** 2).reshape((n, n))
