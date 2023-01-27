@@ -97,19 +97,29 @@ def objective_and_grad(z, y, n, rho: Rho):
     objective = 0.5 * np.linalg.norm(z_minus_proj_m_z, ord="fro")**2 + \
         (r / 2) * np.linalg.norm(a_z + (gamma / r), ord=2)**2
 
-    grad = 0.5 * (z_minus_proj_m_z + r * a_star(a_z, n) + a_star(gamma, n)).flatten()
+    grad = 0.5 * (z_minus_proj_m_z + r * a_star(a_z, n) + a_star(gamma, n))
 
-    return (objective, complex_to_real(grad))
+    return (objective, complex_to_real(grad.flatten()))
+
+
+iter = 0
 
 
 def iteration_callback(z, n, rho, tol=1e-6):
+    global iter
+    iter += 1
+
     rho.randomize()
 
     z = real_to_complex(z)
     m = int(np.sqrt(z.shape[0]))
     z = z.reshape((m, m))
 
-    return np.linalg.norm(z - proj_m(z, n), ord='fro') < tol
+    err = np.linalg.norm(z - proj_m(z, n), ord='fro')
+
+    print(f"iter: {iter:>4} | err: {err:.2e}")
+
+    return err < tol
 
 
 def real_to_complex(z):  # real vector of length 2n -> complex of length n
@@ -121,7 +131,9 @@ def complex_to_real(z):  # complex vector of length n -> real of length 2n
 
 
 def main():
-    im = Image.open(os.path.join("images", "100px", "dancer.jpg")).convert('L')
+    global iter
+
+    im = Image.open(os.path.join("images", "50px", "dancer.jpg")).convert('L')
     x = np.asarray(im) / 255.0
 
     n = x.shape[0]
@@ -129,24 +141,29 @@ def main():
 
     y = np.abs(fft(pad(x, m)))**2
     z_0 = ifft(np.sqrt(y) * np.exp(1j * np.random.rand(m, m) * 2 * np.pi))
+    x_0 = complex_to_real(z_0.flatten())
 
     rho = Rho()
+    partial_callback = partial(iteration_callback, n=n, rho=rho)
 
-    opts = {
-        'maxiter': int(1e4),
-        'iprint': 1,
-        'disp': True,
-        'gtol': 0,
-        'ftol': 0,
-    }
-    res = minimize(fun=objective_and_grad,
-                   x0=complex_to_real(z_0.flatten()),
-                   jac=True,
-                   args=(y, n, rho),
-                   method='L-BFGS-B',
-                   callback=partial(iteration_callback, n=n, rho=rho),
-                   bounds=None,
-                   options=opts)
+    iter = 0
+    max_iter = int(1e3)
+    while iter < max_iter:
+        opts = {
+            'maxiter': max_iter - iter,
+            'disp': False,
+            'gtol': 0,
+            'ftol': 0,
+        }
+        res = minimize(fun=objective_and_grad,
+                       x0=x_0,
+                       jac=True,
+                       args=(y, n, rho),
+                       method='L-BFGS-B',
+                       callback=partial_callback,
+                       bounds=None,
+                       options=opts)
+        x_0 = res.x
 
     x_hat = real_to_complex(res.x).reshape((m, m))[:n, :n]
     print(np.allclose(x, x_hat, atol=0.05))
