@@ -131,6 +131,8 @@ def complex_to_real(z):  # complex vector of length n -> real of length 2n
 
 
 def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(1e2)):
+    global iter
+
     n = x.shape[0]
     m = 2 * n - 1
 
