@@ -4,6 +4,7 @@ from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 import os
 from PIL import Image
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 class Rho:
@@ -179,11 +180,27 @@ def main():
 
     # solve PR
     x_hat = solve_phase_retrieval(x)
+    x_hat_real = np.clip(np.real(x_hat), 0, 1)
+
+    diff = (x - x_hat_real)
 
     # plot original image and result
-    fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+    fig, axs = plt.subplots(1, 3, width_ratios=(1, 1, 1.06), figsize=(12, 4))
+
     axs[0].imshow(x, cmap="gray")
-    axs[1].imshow(np.clip(np.real(x_hat), 0, 1), cmap="gray")
+    axs[0].set_title("Original")
+
+    axs[1].imshow(x_hat_real, cmap="gray")
+    axs[1].set_title("Recovered")
+
+    im_diff = axs[2].imshow(diff, cmap="plasma")
+    axs[2].set_title("Difference")
+
+    # Add colorbar
+    divider = make_axes_locatable(axs[2])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im_diff, cax=cax)
+
     plt.show()
 
     # n = 4
