@@ -133,8 +133,12 @@ def complex_to_real(z):  # complex vector of length n -> real of length 2n
 def main():
     global iter
 
-    im = Image.open(os.path.join("images", "50px", "dancer.jpg")).convert('L')
-    x = np.asarray(im) / 255.0
+    size_px = 25
+    resampling = Image.Resampling.BICUBIC
+
+    im = Image.open(os.path.join("images", "dancer.jpg")).convert('L')
+    im_resized = im.resize((size_px, size_px), resample=resampling)
+    x = np.asarray(im_resized) / 255.0
 
     n = x.shape[0]
     m = 2 * n - 1
@@ -147,7 +151,7 @@ def main():
     partial_callback = partial(iteration_callback, n=n, rho=rho)
 
     iter = 0
-    max_iter = int(1e3)
+    max_iter = int(1e2)
     while iter < max_iter:
         opts = {
             'maxiter': max_iter - iter,
