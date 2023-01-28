@@ -130,28 +130,21 @@ def complex_to_real(z):  # complex vector of length n -> real of length 2n
     return np.concatenate((np.real(z), np.imag(z)))
 
 
-def main():
+def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(1e2)):
     global iter
-
-    size_px = 25
-    resampling = Image.Resampling.BICUBIC
-
-    im = Image.open(os.path.join("images", "dancer.jpg")).convert('L')
-    im_resized = im.resize((size_px, size_px), resample=resampling)
-    x = np.asarray(im_resized) / 255.0
 
     n = x.shape[0]
     m = 2 * n - 1
 
     y = np.abs(fft(pad(x, m)))**2
+
     z_0 = ifft(np.sqrt(y) * np.exp(1j * np.random.rand(m, m) * 2 * np.pi))
     x_0 = complex_to_real(z_0.flatten())
 
-    rho = Rho()
+    rho = Rho(rho_scale)
     partial_callback = partial(iteration_callback, n=n, rho=rho)
 
     iter = 0
-    max_iter = int(1e2)
     while iter < max_iter:
         opts = {
             'maxiter': max_iter - iter,
@@ -170,8 +163,24 @@ def main():
         x_0 = res.x
 
     x_hat = real_to_complex(res.x).reshape((m, m))[:n, :n]
-    print(np.allclose(x, x_hat, atol=0.05))
+    print(f"SUCCESS: {np.allclose(x, x_hat, atol=0.05)}")
 
+    return x_hat
+
+
+def main():
+    size_px = 25
+    resampling = Image.Resampling.BICUBIC
+
+    # Load image
+    im = Image.open(os.path.join("images", "dancer.jpg")).convert('L')
+    im_resized = im.resize((size_px, size_px), resample=resampling)
+    x = np.asarray(im_resized) / 255.0
+
+    # solve PR
+    x_hat = solve_phase_retrieval(x)
+
+    # plot original image and result
     fig, axs = plt.subplots(1, 2, figsize=(10, 5))
     axs[0].imshow(x, cmap="gray")
     axs[1].imshow(np.clip(np.real(x_hat), 0, 1), cmap="gray")
