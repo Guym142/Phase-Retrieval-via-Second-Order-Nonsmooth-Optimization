@@ -74,7 +74,7 @@ def a_star(gamma, n):
     return res
 
 
-def objective_and_grad(z, y, n, rho: Rho):
+def objective_and_grad(z, y, n, rho: Rho, gamma):
     """
 
     Args:
@@ -90,7 +90,6 @@ def objective_and_grad(z, y, n, rho: Rho):
     m = y.shape[0]
     z = real_to_complex(z).reshape((m, m))
 
-    gamma = np.ones(m**2 - n**2)
     proj_m_z = proj_m(z, y)
     z_minus_proj_m_z = z - proj_m_z
     a_z = a(z, n)
@@ -132,8 +131,6 @@ def complex_to_real(z):  # complex vector of length n -> real of length 2n
 
 
 def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(1e2)):
-    global iter
-
     n = x.shape[0]
     m = 2 * n - 1
 
@@ -144,6 +141,8 @@ def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(1e2)):
 
     rho = Rho(rho_scale)
     partial_callback = partial(iteration_callback, n=n, rho=rho)
+
+    gamma = np.ones(m**2 - n**2)
 
     iter = 0
     while iter < max_iter:
@@ -156,7 +155,7 @@ def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(1e2)):
         res = minimize(fun=objective_and_grad,
                        x0=x_0,
                        jac=True,
-                       args=(y, n, rho),
+                       args=(y, n, rho, gamma),
                        method='L-BFGS-B',
                        callback=partial_callback,
                        bounds=None,
