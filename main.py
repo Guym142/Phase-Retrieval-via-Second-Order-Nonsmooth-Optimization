@@ -170,7 +170,7 @@ def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(1e2)):
 
 
 def main():
-    size_px = 25
+    size_px = 50
     resampling = Image.Resampling.BICUBIC
 
     # Load image
@@ -182,7 +182,7 @@ def main():
     x_hat = solve_phase_retrieval(x)
     x_hat_real = np.clip(np.real(x_hat), 0, 1)
 
-    diff = (x - x_hat_real)
+    diff = np.abs(x - x_hat_real)
 
     # plot original image and result
     fig, axs = plt.subplots(1, 3, width_ratios=(1, 1, 1.06), figsize=(12, 4))
