@@ -69,7 +69,7 @@ def a_star(gamma, n):
     m = int(np.sqrt(gamma.shape[0] + n**2))
     res = np.zeros((m, m), dtype=gamma.dtype)
     idxs = a(np.arange(m**2).reshape((m, m)), n)
-    res[np.unravel_index(idxs, (m, m))] = gamma
+    res[np.unravel_index(idxs, (m, m))] = np.conj(gamma)
 
     return res
 
