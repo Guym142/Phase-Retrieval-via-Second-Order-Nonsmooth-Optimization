@@ -2,3 +2,6 @@
 !.gitignore
 
 venv/
+/tensorlab_2016-03-28/
+
+*.asv
