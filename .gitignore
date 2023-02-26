@@ -2,5 +2,6 @@
 !.gitignore
 
 venv/
+results/
 
 *.asv

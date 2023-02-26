@@ -120,18 +120,9 @@ def iteration_callback(z, y, rho, lamda: Lamda, z_0_clean, tol=1e-6):
     m = int(np.sqrt(z.shape[0]))
     z = z.reshape((m, m))
 
-    # plot initial guess
-    if iter in range(10) or iter % 10 == 0:
-        fig, ax = plt.subplots(1, 1)
-        im = ax.imshow(np.abs(z), cmap='gray')
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        fig.colorbar(im, cax=cax)
-        plt.title(f"iter: {iter:>4}")
-        if not os.path.exists("results"):
-            os.makedirs("results")
-        plt.savefig(f"results/iter_{iter:04d}.png")
-        plt.close(fig)
+    # save progress to results folder
+    if iter < 10 or iter % 10 == 0:
+        save_result(z, iter)
 
     err = np.linalg.norm(z - proj_m(z, y), ord='fro')
 
@@ -139,6 +130,19 @@ def iteration_callback(z, y, rho, lamda: Lamda, z_0_clean, tol=1e-6):
     print(f"iter: {iter:>4} | err: {err:.2e} | mse: {mse:.5e} | rho: {rho.get():.2e}")
 
     return err < tol
+
+
+def save_result(z, iter):
+    fig, ax = plt.subplots(1, 1)
+    im = ax.imshow(np.abs(z), cmap='gray')
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+    plt.title(f"iter: {iter:>4}")
+    if not os.path.exists("results"):
+        os.makedirs("results")
+    plt.savefig(f"results/iter_{iter:04d}.png")
+    plt.close(fig)
 
 
 def real_to_complex(z):  # real vector of length 2n -> complex of length n
@@ -149,7 +153,7 @@ def complex_to_real(z):  # complex vector of length n -> real of length 2n
     return np.concatenate((np.real(z), np.imag(z)))
 
 
-def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(10)):
+def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(1e3)):
     global iter
 
     n = x.shape[0]
@@ -159,23 +163,14 @@ def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(10)):
 
     y = np.abs(fft_x)**2
 
-    plt.imshow(np.fft.ifftshift(np.log(y)))
-    plt.show()
-    plt.close()
-
-    # test for z_0 which is the source image x with noise added to the phase
+    # set noise_scale to 1 to start with random noise, or to 0 to start with the source image.
+    # any value inbetween will mix the two proportionaliy.
+    noise_scale = 1
     z_0_clean = pad(x, m)
-    noise_scale = 0
     phase = np.exp(((np.random.rand(m, m) * 2 * np.pi * noise_scale) + np.angle(fft_x) * (1 - noise_scale)) * 1j)
     z_0 = ifft(np.sqrt(y) * phase)
 
-    # plot initial guess
-    fig, ax = plt.subplots(1, 1)
-    im = ax.imshow(np.abs(z_0), cmap='gray')
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    fig.colorbar(im, cax=cax)
-    plt.show()
+    save_result(z_0, iter=0)
 
     # the minimizer works only for real numbers so it is required to convert the complex vector
     # to a real vector that is twice as long.
@@ -185,9 +180,12 @@ def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(10)):
     rho = Rho(rho_scale)
 
     # different option for lamda:
-    # lamda = np.random.randn(m ** 2 - n ** 2) * 1
-    # lamda = Lamda(a(z_0, n) * rho.get())
-    lamda = Lamda(np.ones(m**2 - n**2) * 1)
+    lamda0 = np.ones(m**2 - n**2) * 1
+    # lamda0 = np.random.randn(m ** 2 - n ** 2) * 1
+    # lamda0 = np.random.rand(m**2 - n**2) * 1 + np.random.rand(m**2 - n**2) * 1j
+    # lamda0 = (np.random.rand(m**2 - n**2) - 0.5) * 1 + (np.random.rand(m**2 - n**2) - 0.5) * 1j
+
+    lamda = Lamda(lamda0)
 
     partial_callback = partial(iteration_callback, y=y, lamda=lamda, rho=rho, z_0_clean=z_0_clean)
 
@@ -222,7 +220,7 @@ def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(10)):
 def main():
     np.random.seed(1)
 
-    size_px = 25
+    size_px = 50
     resampling = Image.Resampling.BICUBIC
 
     # load image
