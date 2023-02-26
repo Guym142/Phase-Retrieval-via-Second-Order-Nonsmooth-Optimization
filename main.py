@@ -12,38 +12,39 @@ class Rho:
     def __init__(self, scale=0.1):
         self.rho = 1
         self.scale = scale
-        # self.randomize()
-        # self.rho = np.random.rand() * self.scale
+        self.randomize()
 
     def get(self):
         return self.rho
 
     def randomize(self):
-        pass
-        # self.rho = np.random.rand() * self.scale
+        self.rho = np.random.rand() * self.scale
 
 
 class Lamda:
-    def __init__(self, init_lamda):
-        self.lamda = init_lamda
+
+    def __init__(self, lamda0):
+        self.lamda = lamda0
 
 
 def fft(x):
-    """normalized 2d fft"""
+    """fourier transform"""
     return np.fft.fft2(x)
 
 
 def ifft(x):
-    """normalized 2d invers fft"""
+    """inverse fourier transform"""
     return np.fft.ifft2(x)
 
 
 def proj_m(z, y):
+    """projection operator onto M"""
     fft_z = fft(z)
     return ifft(np.sqrt(y) * (fft_z / np.abs(fft_z)))
 
 
 def proj_s(z, n):
+    """projection operator onto S"""
     z_proj = np.zeros_like(z)
     z_proj[:n, :n] = z[:n, :n]
     return z_proj
@@ -58,6 +59,7 @@ def pad(x, m):
 
 
 def a(z, n):
+    """the operator A"""
     mask = np.ones_like(z, dtype=bool)
     mask[:n, :n] = False
     return z[mask].flatten()
@@ -65,17 +67,11 @@ def a(z, n):
 
 def a_star(lamda, n):
     """
-
-    Args:
-        lamda: vector of length m^2 - n^2
-        n:
-
-    Returns:
-
+    the operator A* (adjoint)
     """
-    m = int(np.sqrt(lamda.shape[0] + n ** 2))
+    m = int(np.sqrt(lamda.shape[0] + n**2))
     res = np.zeros((m, m), dtype=lamda.dtype)
-    idxs = a(np.arange(m ** 2).reshape((m, m)), n)
+    idxs = a(np.arange(m**2).reshape((m, m)), n)
     res[np.unravel_index(idxs, (m, m))] = np.conj(lamda)
 
     return res
@@ -91,7 +87,7 @@ def objective_and_grad(z, y, n, rho: Rho, lamda: Lamda):
         rho:
 
     Returns:
-
+        a tuple of the objective and the gradient
     """
     r = rho.get()
     lamda = lamda.lamda
@@ -124,10 +120,6 @@ def iteration_callback(z, y, rho, lamda: Lamda, z_0_clean, tol=1e-6):
     m = int(np.sqrt(z.shape[0]))
     z = z.reshape((m, m))
 
-    n = int(np.sqrt(m ** 2 - len(lamda.lamda)))
-
-    # lamda.lamda *= a(z, n) * rho.get()
-
     # plot initial guess
     if iter in range(10) or iter % 10 == 0:
         fig, ax = plt.subplots(1, 1)
@@ -143,7 +135,7 @@ def iteration_callback(z, y, rho, lamda: Lamda, z_0_clean, tol=1e-6):
 
     err = np.linalg.norm(z - proj_m(z, y), ord='fro')
 
-    mse = np.linalg.norm(z_0_clean - z, ord='fro') ** 2 / (m ** 2)
+    mse = np.linalg.norm(z_0_clean - z, ord='fro')**2 / (m**2)
     print(f"iter: {iter:>4} | err: {err:.2e} | mse: {mse:.5e} | rho: {rho.get():.2e}")
 
     return err < tol
@@ -163,15 +155,15 @@ def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(10)):
     n = x.shape[0]
     m = 2 * n
 
-    # fft_x = fft(x)
     fft_x = fft(pad(x, m))
 
-    y = np.abs(fft_x) ** 2
+    y = np.abs(fft_x)**2
 
     plt.imshow(np.fft.ifftshift(np.log(y)))
     plt.show()
     plt.close()
 
+    # test for z_0 which is the source image x with noise added to the phase
     z_0_clean = pad(x, m)
     noise_scale = 0
     phase = np.exp(((np.random.rand(m, m) * 2 * np.pi * noise_scale) + np.angle(fft_x) * (1 - noise_scale)) * 1j)
@@ -185,16 +177,23 @@ def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(10)):
     fig.colorbar(im, cax=cax)
     plt.show()
 
+    # the minimizer works only for real numbers so it is required to convert the complex vector
+    # to a real vector that is twice as long.
+    # this vector will be converted later back to a complex vector for calculation and for analyzing it.
     x_0 = complex_to_real(z_0.flatten())
 
     rho = Rho(rho_scale)
 
+    # different option for lamda:
     # lamda = np.random.randn(m ** 2 - n ** 2) * 1
     # lamda = Lamda(a(z_0, n) * rho.get())
-    lamda = Lamda(np.ones(m ** 2 - n ** 2) * 1)
+    lamda = Lamda(np.ones(m**2 - n**2) * 1)
 
     partial_callback = partial(iteration_callback, y=y, lamda=lamda, rho=rho, z_0_clean=z_0_clean)
 
+    # the minimize function doesn't let us to disable the internal stop condition
+    # so in order to run the desired amount of iterations we have to restart the minimization
+    # using the result of the recent minimization as the starting point of the next
     iter = 0
     while iter < max_iter:
         opts = {
@@ -226,7 +225,7 @@ def main():
     size_px = 25
     resampling = Image.Resampling.BICUBIC
 
-    # Load image
+    # load image
     im = Image.open(os.path.join("images", "dancer.jpg")).convert('L')
     im_resized = im.resize((size_px, size_px), resample=resampling)
     x = np.asarray(im_resized) / 255.0
@@ -249,7 +248,7 @@ def main():
     im_diff = axs[2].imshow(diff, cmap="plasma")
     axs[2].set_title("Difference")
 
-    # Add colorbar
+    # aAdd colorbar
     divider = make_axes_locatable(axs[2])
     cax = divider.append_axes("right", size="5%", pad=0.05)
     plt.colorbar(im_diff, cax=cax)
