@@ -20,9 +20,9 @@ z_0 = F_inv(sqrt(y) .* exp(1j * 2 * pi * rand(m)));
 % z_0 = zero_pad(x, m); % try to start with the source image
 
 % different options for lambda:
-lambda = 2*(rand(1, m^2 - n^2)-0.5) * 1;
+lambda = ones(1, m^2 - n^2) * 1;
 % lambda = 0.1 .* randn(1, m^2 - n^2) .* exp(1j * 2 * pi * rand(1, m^2 - n^2));
-% lambda = ones(1, m^2 - n^2) * 0.1;
+% lambda = 2*(rand(1, m^2 - n^2)-0.5) * 1;
 % lambda = ( 2*(rand(1, m^2 - n^2)-0.5) + 1j*2*(rand(1, m^2 - n^2)-0.5) ) * 1;
 % lambda = 0.1 * (randn(1, m^2 - n^2) + 1j*randn(1, m^2 - n^2));
 

@@ -153,7 +153,7 @@ def complex_to_real(z):  # complex vector of length n -> real of length 2n
     return np.concatenate((np.real(z), np.imag(z)))
 
 
-def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(1e3)):
+def solve_phase_retrieval(x, max_iter, rho_scale=0.1):
     global iter
 
     n = x.shape[0]
@@ -224,12 +224,13 @@ def main():
     resampling = Image.Resampling.BICUBIC
 
     # load image
-    im = Image.open(os.path.join("images", "dancer.jpg")).convert('L')
+    image_name = "dancer.jpg"
+    im = Image.open(os.path.join("images", image_name)).convert('L')
     im_resized = im.resize((size_px, size_px), resample=resampling)
     x = np.asarray(im_resized) / 255.0
 
     # solve PR
-    x_hat = solve_phase_retrieval(x)
+    x_hat = solve_phase_retrieval(x, max_iter=1e3)
     x_hat_real = np.clip(np.real(x_hat), 0, 1)
 
     diff = np.abs(x - x_hat_real)
