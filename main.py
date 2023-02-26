@@ -10,15 +10,22 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 class Rho:
 
     def __init__(self, scale=0.1):
-        self.rho = None
+        self.rho = 1
         self.scale = scale
-        self.randomize()
+        # self.randomize()
+        # self.rho = np.random.rand() * self.scale
 
     def get(self):
         return self.rho
 
     def randomize(self):
-        self.rho = np.random.rand() * self.scale
+        pass
+        # self.rho = np.random.rand() * self.scale
+
+
+class Lamda:
+    def __init__(self, init_lamda):
+        self.lamda = init_lamda
 
 
 def fft(x):
@@ -56,25 +63,25 @@ def a(z, n):
     return z[mask].flatten()
 
 
-def a_star(gamma, n):
+def a_star(lamda, n):
     """
 
     Args:
-        gamma: vector of length m^2 - n^2
+        lamda: vector of length m^2 - n^2
         n:
 
     Returns:
 
     """
-    m = int(np.sqrt(gamma.shape[0] + n**2))
-    res = np.zeros((m, m), dtype=gamma.dtype)
-    idxs = a(np.arange(m**2).reshape((m, m)), n)
-    res[np.unravel_index(idxs, (m, m))] = np.conj(gamma)
+    m = int(np.sqrt(lamda.shape[0] + n ** 2))
+    res = np.zeros((m, m), dtype=lamda.dtype)
+    idxs = a(np.arange(m ** 2).reshape((m, m)), n)
+    res[np.unravel_index(idxs, (m, m))] = np.conj(lamda)
 
     return res
 
 
-def objective_and_grad(z, y, n, rho: Rho, gamma):
+def objective_and_grad(z, y, n, rho: Rho, lamda: Lamda):
     """
 
     Args:
@@ -87,6 +94,8 @@ def objective_and_grad(z, y, n, rho: Rho, gamma):
 
     """
     r = rho.get()
+    lamda = lamda.lamda
+
     m = y.shape[0]
     z = real_to_complex(z).reshape((m, m))
 
@@ -94,18 +103,18 @@ def objective_and_grad(z, y, n, rho: Rho, gamma):
     z_minus_proj_m_z = z - proj_m_z
     a_z = a(z, n)
 
-    objective = 0.5 * np.linalg.norm(z_minus_proj_m_z, ord="fro")**2 + \
-        (r / 2) * np.linalg.norm(a_z + (gamma / r), ord=2)**2
+    objective = 0.5 * np.linalg.norm(z_minus_proj_m_z, ord="fro") ** 2 + \
+                (r / 2) * np.linalg.norm(a_z + (lamda / r), ord=2) ** 2
 
-    grad = 0.5 * (z_minus_proj_m_z + r * a_star(a_z, n) + a_star(gamma, n))
+    grad = 0.5 * (z_minus_proj_m_z + r * a_star(a_z, n) + a_star(lamda, n))
 
-    return (objective, complex_to_real(grad.flatten()))
+    return objective, complex_to_real(grad.flatten())
 
 
 iter = 0
 
 
-def iteration_callback(z, n, rho, tol=1e-6):
+def iteration_callback(z, y, rho, lamda: Lamda, z_0_clean, tol=1e-6):
     global iter
     iter += 1
 
@@ -115,9 +124,27 @@ def iteration_callback(z, n, rho, tol=1e-6):
     m = int(np.sqrt(z.shape[0]))
     z = z.reshape((m, m))
 
-    err = np.linalg.norm(z - proj_m(z, n), ord='fro')
+    n = int(np.sqrt(m ** 2 - len(lamda.lamda)))
 
-    print(f"iter: {iter:>4} | err: {err:.2e}")
+    # lamda.lamda *= a(z, n) * rho.get()
+
+    # plot initial guess
+    if iter in range(10) or iter % 10 == 0:
+        fig, ax = plt.subplots(1, 1)
+        im = ax.imshow(np.abs(z), cmap='gray')
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        fig.colorbar(im, cax=cax)
+        plt.title(f"iter: {iter:>4}")
+        if not os.path.exists("results"):
+            os.makedirs("results")
+        plt.savefig(f"results/iter_{iter:04d}.png")
+        plt.close(fig)
+
+    err = np.linalg.norm(z - proj_m(z, y), ord='fro')
+
+    mse = np.linalg.norm(z_0_clean - z, ord='fro') ** 2 / (m ** 2)
+    print(f"iter: {iter:>4} | err: {err:.2e} | mse: {mse:.5e} | rho: {rho.get():.2e}")
 
     return err < tol
 
@@ -130,21 +157,43 @@ def complex_to_real(z):  # complex vector of length n -> real of length 2n
     return np.concatenate((np.real(z), np.imag(z)))
 
 
-def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(1e2)):
+def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(10)):
     global iter
 
     n = x.shape[0]
-    m = 2 * n - 1
+    m = 2 * n
 
-    y = np.abs(fft(pad(x, m)))**2
+    # fft_x = fft(x)
+    fft_x = fft(pad(x, m))
 
-    z_0 = ifft(np.sqrt(y) * np.exp(1j * np.random.rand(m, m) * 2 * np.pi))
+    y = np.abs(fft_x) ** 2
+
+    plt.imshow(np.fft.ifftshift(np.log(y)))
+    plt.show()
+    plt.close()
+
+    z_0_clean = pad(x, m)
+    noise_scale = 0
+    phase = np.exp(((np.random.rand(m, m) * 2 * np.pi * noise_scale) + np.angle(fft_x) * (1 - noise_scale)) * 1j)
+    z_0 = ifft(np.sqrt(y) * phase)
+
+    # plot initial guess
+    fig, ax = plt.subplots(1, 1)
+    im = ax.imshow(np.abs(z_0), cmap='gray')
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+    plt.show()
+
     x_0 = complex_to_real(z_0.flatten())
 
     rho = Rho(rho_scale)
-    partial_callback = partial(iteration_callback, n=n, rho=rho)
 
-    gamma = np.ones(m**2 - n**2)
+    # lamda = np.random.randn(m ** 2 - n ** 2) * 1
+    # lamda = Lamda(a(z_0, n) * rho.get())
+    lamda = Lamda(np.ones(m ** 2 - n ** 2) * 1)
+
+    partial_callback = partial(iteration_callback, y=y, lamda=lamda, rho=rho, z_0_clean=z_0_clean)
 
     iter = 0
     while iter < max_iter:
@@ -153,11 +202,12 @@ def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(1e2)):
             'disp': False,
             'gtol': 0,
             'ftol': 0,
+            'maxls': 50,
         }
         res = minimize(fun=objective_and_grad,
                        x0=x_0,
                        jac=True,
-                       args=(y, n, rho, gamma),
+                       args=(y, n, rho, lamda),
                        method='L-BFGS-B',
                        callback=partial_callback,
                        bounds=None,
@@ -171,7 +221,9 @@ def solve_phase_retrieval(x, rho_scale=0.1, max_iter=int(1e2)):
 
 
 def main():
-    size_px = 50
+    np.random.seed(1)
+
+    size_px = 25
     resampling = Image.Resampling.BICUBIC
 
     # Load image
@@ -203,12 +255,6 @@ def main():
     plt.colorbar(im_diff, cax=cax)
 
     plt.show()
-
-    # n = 4
-    # x = np.arange(n ** 2).reshape((n, n))
-    # print(x)
-    # print(a(x, 2))
-    # print(a_star(a(x, 2), 2))
 
 
 if __name__ == "__main__":
