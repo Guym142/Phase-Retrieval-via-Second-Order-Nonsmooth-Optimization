@@ -229,6 +229,14 @@ def main():
     im_resized = im.resize((size_px, size_px), resample=resampling)
     x = np.asarray(im_resized) / 255.0
 
+    # invert and add a thin white frame:
+    # x = 1 - x
+    # x = np.array(x, dtype=float)
+    # x[0, :] = 1.0
+    # x[size_px - 1, :] = 1.0
+    # x[:, 0] = 1.0
+    # x[:, size_px - 1] = 1.0
+
     # solve PR
     x_hat = solve_phase_retrieval(x, max_iter=1e3)
     x_hat_real = np.clip(np.real(x_hat), 0, 1)
